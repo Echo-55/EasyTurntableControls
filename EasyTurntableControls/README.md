@@ -2,6 +2,10 @@
 
 A UnityModManager mod for [Railroader](https://store.steampowered.com/app/1683150/Railroader/) that enhances turntable controls, allowing for precise and easy rotation of turntables using an in-game window.
 
+![Turntable screenshot][image]
+
+[image]: Resources/window_ss.png
+
 ## Features
 - **Precise Rotation**: Rotate turntables to exact angles using a slider or input field.
 - **User-Friendly Interface**: Intuitive UI using the game's existing UI framework.
