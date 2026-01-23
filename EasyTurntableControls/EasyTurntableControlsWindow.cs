@@ -355,7 +355,6 @@ public class EasyTurntableControlsWindow : MonoBehaviour, IProgrammaticWindow
         kvpObject["controlLever"] = Value.Float(value);
     }
 
-
     /// <summary>
     /// Coroutine to rotate the turntable to a specific track index.
     /// Handles ramp-up, steady rotation, slow-down, and fine adjustment phases.
