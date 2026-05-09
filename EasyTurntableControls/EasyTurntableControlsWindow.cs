@@ -31,7 +31,7 @@ public class EasyTurntableControlsWindow : MonoBehaviour, IProgrammaticWindow
     private int _selectedTrackIndex;
     private bool _settingsDirty;
     private TurntableNodesVisualizer? _nodesVisualizer;
-    
+
     private SearchState? _searchState;
     private SettingsState? _settingsState;
     private ControlState? _controlState;
@@ -88,7 +88,7 @@ public class EasyTurntableControlsWindow : MonoBehaviour, IProgrammaticWindow
         _selectedTrackIndex = _activeTurntableController?.turntable.StopIndex ?? 0;
     }
 
-    public void Hide() => CleanupState(clearReflectionState: false, resetWindowMode: false);
+    public void Hide() => CleanupState(false, false);
 
     public void Populate(Window window)
     {
@@ -105,11 +105,11 @@ public class EasyTurntableControlsWindow : MonoBehaviour, IProgrammaticWindow
             _logger.Error("Failed to find TurntableController._propertyObject via reflection.");
     }
 
-    public void OnWorldUnloaded() { CleanupState(clearReflectionState: true, resetWindowMode: true); }
+    public void OnWorldUnloaded() { CleanupState(true, true); }
 
     public void Cleanup()
     {
-        CleanupState(clearReflectionState: true, resetWindowMode: true);
+        CleanupState(true, true);
         _panel?.Dispose();
         _panel = null;
         _window = null;
@@ -143,14 +143,14 @@ public class EasyTurntableControlsWindow : MonoBehaviour, IProgrammaticWindow
         }
     }
 
-    private float GetControlLever()
+    private float GetControlLeverValueForActiveTurntable()
     {
         return TryGetKeyValueObject(_activeTurntableController, out var kvpObject)
             ? kvpObject["controlLever"].FloatValue
             : CenterLeverValue;
     }
 
-    private void SetControlLever(float value) { SetControlLever(_activeTurntableController, value); }
+    private void SetControlLeverValueForActiveTurntable(float value) { SetControlLeverForTurntable(_activeTurntableController, value); }
 
     private void UpdateSettings(System.Action<Main.EasyTurntableControlsSettings> update)
     {
@@ -204,7 +204,7 @@ public class EasyTurntableControlsWindow : MonoBehaviour, IProgrammaticWindow
 
     private void StartRotation(IEnumerator coroutine)
     {
-        StopRotation(resetLever: true);
+        StopRotation(true);
         _rotationCoroutine = StartCoroutine(coroutine);
     }
 
@@ -244,7 +244,7 @@ public class EasyTurntableControlsWindow : MonoBehaviour, IProgrammaticWindow
         if (turntableController == null) yield break;
         var settings = Main.Settings;
         if (settings == null) yield break;
-        if (!TryGetKeyValueObject(turntableController, out var kvpObject)) yield break;
+        if (!TryGetKeyValueObject(turntableController, out KeyValueObject kvpObject)) yield break;
 
         var turntable = turntableController.turntable;
         var pid = new PidController(settings.PidSettings);
@@ -290,38 +290,36 @@ public class EasyTurntableControlsWindow : MonoBehaviour, IProgrammaticWindow
 
     private ControlState CreateControlState()
     {
-        return new ControlState(
-            getActiveTurntableController: () => _activeTurntableController,
-            getSelectedTrackIndex: () => _selectedTrackIndex,
-            setSelectedTrackIndex: idx => _selectedTrackIndex = idx,
-            startRotateToIndex: StartRotateToIndex,
-            getNodesButtonText: () => _nodesVisualizer == null ? "Show Nodes" : "Hide Nodes",
-            toggleNodesVisualizer: ToggleNodesVisualizer,
-            getControlLever: GetControlLever,
-            setControlLever: SetControlLever,
-            startRotateToNextPosition: StartRotateToNextPosition,
-            flipTurntable: FlipTurntable,
-            openSettings: OpenSettings);
+        return new ControlState(() => _activeTurntableController,
+            () => _selectedTrackIndex,
+            idx => _selectedTrackIndex = idx,
+            StartRotateToIndex,
+            () => _nodesVisualizer == null ? "Show Nodes" : "Hide Nodes",
+            ToggleNodesVisualizer,
+            GetControlLeverValueForActiveTurntable,
+            SetControlLeverValueForActiveTurntable,
+            StartRotateToNextPosition,
+            FlipTurntable,
+            OpenSettings);
     }
 
     private SearchState CreateSearchState()
     {
-        return new SearchState(
-            getAllTurntables: () => _allTurntables,
-            getMainCamera: () => _mainCamera,
-            openSettings: OpenSettings,
-            jumpToTurntable: JumpToTurntable);
+        return new SearchState(() => _allTurntables,
+            () => _mainCamera,
+            OpenSettings,
+            JumpToTurntable);
     }
 
     private SettingsState CreateSettingsState()
     {
         return new SettingsState(
-            stateMachine: _stateMachine,
-            getSettings: () => Main.Settings,
-            updateSettings: UpdateSettings,
-            closeSettings: CloseSettings,
-            resetEditableSettings: ResetEditableSettings,
-            onExit: SavePendingSettings);
+            _stateMachine,
+            () => Main.Settings,
+            UpdateSettings,
+            CloseSettings,
+            ResetEditableSettings,
+            SavePendingSettings);
     }
 
     private void CleanupState(bool clearReflectionState, bool resetWindowMode)
@@ -357,19 +355,18 @@ public class EasyTurntableControlsWindow : MonoBehaviour, IProgrammaticWindow
 
     private void StopRotation(bool resetLever)
     {
-        var turntableController = _activeTurntableController;
-
         if (_rotationCoroutine != null)
         {
             StopCoroutine(_rotationCoroutine);
             _rotationCoroutine = null;
         }
 
-        if (resetLever)
-            SetControlLever(turntableController, CenterLeverValue);
+        if (!resetLever) return;
+        var turntableController = _activeTurntableController;
+        SetControlLeverForTurntable(turntableController, CenterLeverValue);
     }
 
-    private void SetControlLever(TurntableController? turntableController, float value)
+    private void SetControlLeverForTurntable(TurntableController? turntableController, float value)
     {
         if (!TryGetKeyValueObject(turntableController, out var kvpObject)) return;
 
