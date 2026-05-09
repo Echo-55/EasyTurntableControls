@@ -1,10 +1,12 @@
-using System;
 using UnityEngine;
 using UnityModManagerNet;
 using Object = UnityEngine.Object;
 
 namespace EasyTurntableControls
 {
+#if DEBUG
+    [EnableReloading]
+#endif
     public class Main
     {
         private static UnityModManager.ModEntry? _modEntry;
@@ -13,16 +15,37 @@ namespace EasyTurntableControls
         public static bool IsEnabled => _modEntry?.Enabled ?? false;
         public static EasyTurntableControlsSettings? Settings;
 
-        public static void Load(UnityModManager.ModEntry modEntry)
+        public static bool Load(UnityModManager.ModEntry modEntry)
         {
+            DetachCallbacks(modEntry);
             _modEntry = modEntry;
-            _modEntry.OnToggle += ModEntry_OnToggle;
-            _modEntry.OnGUI += ModEntry_OnGUI;
-            _modEntry.OnSaveGUI += ModEntry_OnSaveGUI;
             Settings = UnityModManager.ModSettings.Load<EasyTurntableControlsSettings>(modEntry);
+            _modEntry.OnToggle += OnToggle;
+            _modEntry.OnGUI += OnGUI;
+            _modEntry.OnSaveGUI += OnSaveGUI;
+
+            if (modEntry.Enabled)
+                OnEnable();
+
+            modEntry.Logger.Log("EasyTurntableControls loaded");
+            return true;
         }
 
-        private static bool ModEntry_OnToggle(UnityModManager.ModEntry modEntry, bool isModEnabled)
+        public static bool Unload(UnityModManager.ModEntry modEntry)
+        {
+            SaveSettings();
+            OnDisable();
+            DetachCallbacks(modEntry);
+            Settings = null;
+
+            if (_modEntry == modEntry)
+                _modEntry = null;
+
+            modEntry.Logger.Log("EasyTurntableControls unloaded");
+            return true;
+        }
+
+        private static bool OnToggle(UnityModManager.ModEntry modEntry, bool isModEnabled)
         {
             if (isModEnabled)
                 OnEnable();
@@ -38,6 +61,7 @@ namespace EasyTurntableControls
             _hookObject = new GameObject("EasyTurntableControls");
             _hookObject.AddComponent<EasyTurntableControlsController>();
             Object.DontDestroyOnLoad(_hookObject);
+            _modEntry?.Logger.Log("EasyTurntableControls enabled");
         }
 
         private static void OnDisable()
@@ -45,35 +69,43 @@ namespace EasyTurntableControls
             if (_hookObject == null) return;
             Object.Destroy(_hookObject);
             _hookObject = null;
+            _modEntry?.Logger.Log("EasyTurntableControls disabled");
         }
 
-        private static void ModEntry_OnGUI(UnityModManager.ModEntry modEntry) { Settings?.Draw(modEntry); }
+        private static void OnGUI(UnityModManager.ModEntry modEntry) => Settings?.Draw(modEntry);
 
-        private static void ModEntry_OnSaveGUI(UnityModManager.ModEntry obj) { Settings?.Save(obj); }
+        private static void OnSaveGUI(UnityModManager.ModEntry modEntry) => Settings?.Save(modEntry);
+
+        public static void SaveSettings()
+        {
+            if (_modEntry != null && Settings != null)
+                Settings.Save(_modEntry);
+        }
+
+        private static void DetachCallbacks(UnityModManager.ModEntry modEntry)
+        {
+            modEntry.OnToggle -= OnToggle;
+            modEntry.OnGUI -= OnGUI;
+            modEntry.OnSaveGUI -= OnSaveGUI;
+        }
 
         [DrawFields(DrawFieldMask.Public)]
         public class EasyTurntableControlsSettings : UnityModManager.ModSettings, IDrawable
         {
+            // ReSharper disable once FieldCanBeMadeReadOnly.Global
             public KeyBinding ToggleTurnTableControlWindow = new() { keyCode = KeyCode.Y };
-            public float Speed = 1f; // how fast the turntable rotates
-            public float RampTime = 0.2f; // time to reach full speed
-            public float SlowDownAngle = 1f; // angle at which to start slowing down
             public float DistanceForTurntableSearch = 250f;
             public PidControllerSettings PidSettings = new();
+
+            public void ResetWindowEditableSettings()
+            {
+                DistanceForTurntableSearch = 250f;
+                PidSettings = new PidControllerSettings();
+            }
 
             public void OnChange()
             {
                 // noop
-            }
-
-            [Serializable]
-            public struct PidControllerSettings
-            {
-                public float P = 0.05f;
-                public float I = 0f;
-                public float D = 0.01f;
-
-                public PidControllerSettings() { }
             }
         }
     }

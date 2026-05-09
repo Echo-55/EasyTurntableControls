@@ -15,7 +15,7 @@ namespace EasyTurntableControls;
 
 public class EasyTurntableControlsController : MonoBehaviour
 {
-    private ILogger _logger = Log.ForContext<EasyTurntableControlsController>();
+    private readonly ILogger _logger = Log.ForContext<EasyTurntableControlsController>();
     private static EasyTurntableControlsController? _instance;
 
     private ProgrammaticWindowCreator? _programmaticWindowCreator;
@@ -23,7 +23,8 @@ public class EasyTurntableControlsController : MonoBehaviour
     private Camera? _mainCamera;
     private WindowManager? _windowManager;
     private EasyTurntableControlsWindow? _turntableControlWindow;
-    public EasyTurntableControlsController? Instance => _instance;
+
+    public static EasyTurntableControlsController? Instance => _instance;
 
     private void Awake()
     {
@@ -38,56 +39,80 @@ public class EasyTurntableControlsController : MonoBehaviour
 
     private void OnEnable()
     {
-        Messenger.Default.Register<MapDidLoadEvent>(this, OnMapLoaded);
-        Messenger.Default.Register<MapDidUnloadEvent>(this, OnMapUnLoaded);
+        Messenger.Default.Register<MapDidLoadEvent>(this, _ => OnWorldLoaded());
+        Messenger.Default.Register<MapDidUnloadEvent>(this, _ => OnWorldUnloaded());
+        TryAttachToCurrentWorld();
+    }
+
+    private void Start()
+    {
+        TryAttachToCurrentWorld();
     }
 
     private void OnDisable()
     {
         Messenger.Default.Unregister<MapDidLoadEvent>(this);
         Messenger.Default.Unregister<MapDidUnloadEvent>(this);
-        OnWorldUnloaded();
+        DetachFromWorld();
+
+        if (_instance == this)
+            _instance = null;
     }
 
-    private void OnMapLoaded(MapDidLoadEvent obj) { OnWorldLoaded(); }
-
-    private void OnMapUnLoaded(MapDidUnloadEvent obj) { OnWorldUnloaded(); }
+    private void OnDestroy()
+    {
+        if (_instance == this)
+            _instance = null;
+    }
 
     private void Update()
     {
-        if (Main.Settings == null) return;
-        if (Main.Settings.ToggleTurnTableControlWindow.Down())
+        if (Main.Settings?.ToggleTurnTableControlWindow.Down() == true)
             ToggleWindow();
     }
 
+    public void OnWorldLoaded() => AttachToWorld(forceRecreate: true, logFailure: true);
 
-    public void OnWorldLoaded()
+    public void OnWorldUnloaded() => DetachFromWorld();
+
+    private void TryAttachToCurrentWorld() => AttachToWorld(forceRecreate: false, logFailure: false);
+
+    private void AttachToWorld(bool forceRecreate, bool logFailure)
     {
+        if (forceRecreate)
+            DetachFromWorld();
+        else if (_turntableControlWindow != null)
+            return;
+
         _programmaticWindowCreator = FindObjectOfType<ProgrammaticWindowCreator>(true);
         if (_programmaticWindowCreator == null)
         {
-            _logger.Error("ProgrammaticWindowCreator not found");
+            if (logFailure)
+                _logger.Error("ProgrammaticWindowCreator not found");
             return;
         }
 
         Window? windowPrefab = _programmaticWindowCreator.windowPrefab;
         if (windowPrefab == null)
         {
-            _logger.Error("Window prefab is null in ProgrammaticWindowCreator");
+            if (logFailure)
+                _logger.Error("Window prefab is null in ProgrammaticWindowCreator");
             return;
         }
 
         UIBuilderAssets? builderAssets = _programmaticWindowCreator.builderAssets;
         if (builderAssets == null)
         {
-            _logger.Error("BuilderAssets is null in ProgrammaticWindowCreator");
+            if (logFailure)
+                _logger.Error("BuilderAssets is null in ProgrammaticWindowCreator");
             return;
         }
 
         _windowManager = WindowManager.Shared;
         if (_windowManager == null)
         {
-            _logger.Error("WindowManager not found");
+            if (logFailure)
+                _logger.Error("WindowManager not found");
             return;
         }
 
@@ -97,27 +122,39 @@ public class EasyTurntableControlsController : MonoBehaviour
 
         if (_turntableControlWindow == null)
         {
-            _logger.Error("Failed to create New Turntable Control Window");
+            _logger.Error("Failed to create turntable control window");
+            return;
         }
 
-        _turntableControlWindow?.OnWorldLoaded();
+        _turntableControlWindow.OnWorldLoaded();
     }
 
-
-    public void OnWorldUnloaded()
+    private void DetachFromWorld()
     {
-        _instance = null;
+        _mainCamera = null;
+
+        if (_turntableControlWindow != null)
+        {
+            _turntableControlWindow.Cleanup();
+            Destroy(_turntableControlWindow.gameObject);
+            _turntableControlWindow = null;
+        }
+
         _programmaticWindowCreator = null;
-        _turntableControlWindow?.OnWorldUnloaded();
-        _turntableControlWindow = null;
+        _windowManager = null;
+        _turntableControllersList.Clear();
     }
 
     private void ToggleWindow()
     {
         if (_turntableControlWindow == null)
         {
-            _logger.Error("Turntable Control Window is null when trying to toggle it.");
-            return;
+            TryAttachToCurrentWorld();
+            if (_turntableControlWindow == null)
+            {
+                _logger.Error("Turntable control window is null when trying to toggle it.");
+                return;
+            }
         }
 
         if (_turntableControlWindow.IsShown)
@@ -132,46 +169,38 @@ public class EasyTurntableControlsController : MonoBehaviour
             return;
         }
 
-        TurntableController? turnTableController = null;
-        foreach (TurntableController? controller in _turntableControllersList)
+        TurntableController? nearestController = FindNearestTurntable(_mainCamera!.transform.position);
+        _turntableControlWindow.Show(nearestController, _turntableControllersList, _mainCamera);
+    }
+
+    private TurntableController? FindNearestTurntable(Vector3 position)
+    {
+        float searchDistance = Main.Settings!.DistanceForTurntableSearch;
+        foreach (TurntableController controller in _turntableControllersList)
         {
             if (controller == null) continue;
-            var distance = Vector3.Distance(_mainCamera.transform.position, controller.transform.position);
-            if (distance <= Main.Settings!.DistanceForTurntableSearch)
+            float distance = Vector3.Distance(position, controller.transform.position);
+            if (distance <= searchDistance)
             {
-                turnTableController = controller;
-                _logger.Information($"Found TurntableController: {controller.name} at distance {distance:F2}");
-                break;
+                _logger.Information("Found TurntableController: {Name} at distance {Distance:F2}", controller.name, distance);
+                return controller;
             }
         }
 
-        if (turnTableController == null)
-        {
-            // No turntable in range: show list mode
-            _turntableControlWindow.Show(null, _turntableControllersList, _mainCamera);
-            return;
-        }
-
-        // In range: show control mode
-        _turntableControlWindow.Show(turnTableController, _turntableControllersList, _mainCamera);
+        return null;
     }
 
-    private TWindow? CreateWindow<TWindow>(Window windowPrefab, UIBuilderAssets builderAssets)
+    private TWindow CreateWindow<TWindow>(Window windowPrefab, UIBuilderAssets builderAssets)
         where TWindow : Component, IProgrammaticWindow
     {
-        _windowManager ??= WindowManager.Shared;
-        if (_windowManager == null)
-        {
-            _logger.Error("WindowManager not found");
-            return null;
-        }
-
-        Window window = Instantiate(windowPrefab, _windowManager.transform, true);
-        window.name = typeof(TWindow).ToString();
+        Window window = Instantiate(windowPrefab, _windowManager!.transform, true);
+        window.name = typeof(TWindow).Name;
         var windowComponent = window.gameObject.AddComponent<TWindow>();
         windowComponent.BuilderAssets = builderAssets;
         window.CloseWindow();
-        window.SetInitialPositionSize(windowComponent.WindowIdentifier, windowComponent.DefaultSize,
+        window.SetInitialPositionSize(
+            windowComponent.WindowIdentifier,
+            windowComponent.DefaultSize,
             windowComponent.DefaultPosition,
             windowComponent.Sizing);
 

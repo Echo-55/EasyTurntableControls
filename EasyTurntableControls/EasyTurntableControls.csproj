@@ -91,6 +91,12 @@
         <Compile Include="Main.cs"/>
         <Compile Include="PidController.cs" />
         <Compile Include="Properties\AssemblyInfo.cs"/>
+        <Compile Include="StateMachine.cs" />
+        <Compile Include="WindowStates\ControlState.cs" />
+        <Compile Include="WindowStates\ErrorState.cs" />
+        <Compile Include="WindowStates\IWindowState.cs" />
+        <Compile Include="WindowStates\SearchState.cs" />
+        <Compile Include="WindowStates\SettingsState.cs" />
     </ItemGroup>
     <ItemGroup>
         <Content Include=".gitignore" />

@@ -1,8 +1,14 @@
-﻿namespace EasyTurntableControls;
+﻿using System;
 
-public class PidController(float kp, float ki, float kd)
+namespace EasyTurntableControls;
+
+// P: reacts to how far off the turntable is right now
+// I: corrects small leftover error over time
+// D: smooths movement and reduces overshoot
+
+public class PidController(PidControllerSettings pidControllerSettings)
 {
-    private readonly float Kp = kp, Ki = ki, Kd = kd;
+    private readonly float Kp = pidControllerSettings.P, Ki = pidControllerSettings.I, Kd = pidControllerSettings.D;
     private float _integral, _lastError;
 
     public float Update(float target, float actual, float deltaTime)
@@ -19,4 +25,14 @@ public class PidController(float kp, float ki, float kd)
         _integral = 0;
         _lastError = 0;
     }
+}
+
+[Serializable]
+public struct PidControllerSettings
+{
+    public float P = 0.05f;
+    public float I = 0f;
+    public float D = 0.01f;
+
+    public PidControllerSettings() { }
 }
